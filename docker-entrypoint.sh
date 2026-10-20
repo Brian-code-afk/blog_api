@@ -13,8 +13,12 @@ set -e
 echo "[entrypoint] 等待 MySQL 就绪 ..."
 python /app/scripts/wait_for_db.py
 
-echo "[entrypoint] 执行数据库迁移 ..."
-alembic upgrade head
+if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
+    echo "[entrypoint] 执行数据库迁移 ..."
+    alembic upgrade head
+else
+    echo "[entrypoint] 跳过数据库迁移（由其他服务负责）"
+fi
 
 echo "[entrypoint] 启动: $@"
 exec "$@"

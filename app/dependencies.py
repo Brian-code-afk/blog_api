@@ -9,10 +9,10 @@
 - get_optional_user      令牌可缺失（列表页按权限返回不同内容时用）
 - get_owned_article      按 slug 取文章并校验归属
 """
-from typing import Annotated,TypeAlias
+from typing import Annotated, TypeAlias
 
 from fastapi import Depends, Query
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWTError
 from sqlalchemy.orm import Session
 
@@ -26,11 +26,11 @@ from app.db.session import SessionLocal
 from app.models import Article, User
 from app.schemas.common import PageParams
 
-# tokenUrl 指向登录接口，Swagger 的 Authorize 按钮会用它
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/api/auth/login",
-    auto_error=True,
-)
+# 用 HTTPBearer 而非 OAuth2PasswordBearer：
+# 登录接口是自定义的（收 JSON、返回令牌对），不是标准 OAuth2 流程。
+# 用 HTTPBearer 后，Swagger 的 Authorize 弹窗就是一个简单的 token 输入框。
+bearer_scheme = HTTPBearer(auto_error=True)
+bearer_scheme_optional = HTTPBearer(auto_error=False)
 
 
 # ────────────────────────── 数据库会话 ──────────────────────────
@@ -72,22 +72,25 @@ def _load_user(db: Session, user_id: int) -> User:
     return user
 
 
+def _parse_user_id(token: str) -> int | None:
+    """解析 token 得到 user_id，任何异常都返回 None。"""
+    try:
+        payload = decode_access_token(token)
+        return int(payload.get("sub"))
+    except (PyJWTError, TokenInvalidException, TypeError, ValueError):
+        return None
+
+
 def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
     """解析 Authorization: Bearer <access_token> 得到当前用户。
 
     失败一律 401（由全局处理器转成统一 JSON，并带 WWW-Authenticate 头）。
     """
-    try:
-        payload = decode_access_token(token)
-        user_id = int(payload.get("sub"))
-    except (PyJWTError, TokenInvalidException):
-        # decode_access_token 内部已区分过期/无效，这里再兜一层
-        raise TokenInvalidException()
-    except (TypeError, ValueError):
-        # sub 缺失或不是数字
+    user_id = _parse_user_id(credentials.credentials)
+    if user_id is None:
         raise TokenInvalidException()
 
     return _load_user(db, user_id)
@@ -103,9 +106,9 @@ def get_current_active_user(
 
 
 def get_optional_user(
-    token: Annotated[str | None, Depends(
-        OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
-    )],
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(bearer_scheme_optional)
+    ],
     db: Annotated[Session, Depends(get_db)],
 ) -> User | None:
     """令牌可缺失：带了就解析，没带返回 None。
@@ -113,12 +116,11 @@ def get_optional_user(
     典型用途：文章列表页对游客只返回 published，
     对作者本人额外返回他自己的 draft。
     """
-    if not token:
+    if credentials is None:
         return None
-    try:
-        payload = decode_access_token(token)
-        user_id = int(payload.get("sub"))
-    except (PyJWTError, TokenInvalidException, TypeError, ValueError):
+
+    user_id = _parse_user_id(credentials.credentials)
+    if user_id is None:
         return None
 
     user = db.get(User, user_id)

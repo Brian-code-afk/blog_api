@@ -102,6 +102,7 @@ services:
       DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE}?charset=utf8mb4
       REDIS_URL: redis://redis:6379/0
       FLUSH_INTERVAL_SECONDS: "300"
+      RUN_MIGRATIONS: "false"
     depends_on:
       db:
         condition: service_healthy
