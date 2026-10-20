@@ -1,0 +1,113 @@
+services:
+  # ============================================================
+  # Web 应用
+  # ============================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blog-api:latest
+    container_name: blog_api_web
+    restart: unless-stopped
+
+    # env_file 提供全部配置项，environment 里的同名项会覆盖它。
+    # 这样本地 .env（localhost）不用改，容器里自动换成服务名。
+    env_file: .env
+    environment:
+      # ⚠️ 关键变化：localhost → 服务名 db / redis
+      # 这两个名字由 Docker 内置 DNS 解析成对应容器 IP
+      DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE}?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: '["*"]'
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      db:
+        condition: service_healthy      # 只等启动不够，要等真正能连
+      redis:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+
+  # ============================================================
+  # MySQL
+  # ============================================================
+  db:
+    image: mysql:8.0
+    container_name: blog_api_db
+    restart: unless-stopped
+
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+    # ↑ 最后一行很重要：MySQL 8 默认 caching_sha2_password，
+    #   PyMySQL 需要额外装 cryptography 才能连，改回 native 最省事
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+
+    volumes:
+      - mysql-data:/var/lib/mysql      # 数据持久化：down 再 up 数据还在
+
+    ports:
+      - "3306:3306"                    # 方便 Navicat 从宿主机连；不需要可删
+
+    healthcheck:
+      # $$ 转义成 $，在容器内读取环境变量，避免密码写进 YAML
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  # ============================================================
+  # Redis
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: blog_api_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes    # 重启后 refresh token 不丢
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ============================================================
+  # 浏览量落库 worker（第 4 关内容，可先注释掉）
+  # 同一个镜像，只换 command —— 演示「一镜像多用途」
+  # ============================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blog-api:latest
+    container_name: blog_api_worker
+    restart: unless-stopped
+    command: python /app/scripts/flush_views.py
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@db:3306/${MYSQL_DATABASE}?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+      FLUSH_INTERVAL_SECONDS: "300"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  redis-data:

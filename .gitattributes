@@ -1,0 +1,11 @@
+# 强制 shell 脚本使用 LF 换行。
+# Windows 上 git 默认可能转成 CRLF，会导致容器内执行失败：
+#   /bin/sh^M: bad interpreter: No such file or directory
+*.sh text eol=lf
+
+# 其余文本文件统一 LF，避免容器内出现 ^M
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+.env.example text eol=lf

@@ -1,0 +1,52 @@
+# ============================================================
+# 构建上下文排除项：这些文件不会进入镜像
+# 作用：镜像瘦身 + 防止密钥泄露
+# ============================================================
+
+# 本地虚拟环境（几百 MB，且和容器内环境不兼容）
+.venv/
+venv/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg-info
+
+# 测试与工具缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 版本控制
+.git/
+.gitignore
+.gitattributes
+
+# ⚠️ 密钥：镜像里绝不能出现（env_file 是运行时读取，不受这里影响）
+.env
+.env.*
+!.env.example
+
+# 本地数据库文件
+*.db
+*.sqlite3
+*.log
+
+# 测试与文档（entrypoint 需要 alembic/，所以那个目录不能排）
+tests/
+docs/
+README.md
+*.md
+
+# Docker 自身文件
+Dockerfile*
+docker-compose*.yml
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

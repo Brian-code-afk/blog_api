@@ -4,7 +4,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent / ".env",
         env_file_encoding="utf-8",
-        extra="forbid"
+        extra="ignore"
     )
     # 字段名小写，自动匹配大写环境变量（大小写不敏感）
     app_name: str = "Blog API"
