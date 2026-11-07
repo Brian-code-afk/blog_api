@@ -1,0 +1,84 @@
+# ============================================================
+# 生产环境叠加配置
+# 用法（两个 compose 文件叠加，后者覆盖前者）：
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# 相对开发环境的核心变化：
+#   1. 端口只监听内网/本地，数据库不暴露公网
+#   2. 所有服务加内存上限（小内存服务器不设会被 OOM kill）
+#   3. MySQL 关掉非必要功能、加大缓冲池
+# ============================================================
+
+services:
+  web:
+    # ⚠️ 关键：只监听 127.0.0.1，公网访问必须走 Nginx
+    #    写成 "8000:8000" 会让 FastAPI 直接暴露公网（没有 HTTPS、没有限流）
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      ENV: prod
+      LOG_LEVEL: INFO
+      DB_ECHO: "false"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    environment:
+      ENV: prod
+      LOG_LEVEL: INFO
+      DB_ECHO: "false"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    # 不映射到宿主机，只在 compose 内部网络可访问
+    # 需要从本机连 Navicat 时，临时改成 "127.0.0.1:3307:3306" 再用 SSH 隧道
+    ports: []
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+      --innodb-buffer-pool-size=256M
+      --max-connections=100
+      --skip-name-resolve
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    ports: []
+    # 256MB 上限 + LRU 淘汰，防止把服务器内存吃满
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
