@@ -22,7 +22,9 @@ ok()   { echo -e "\033[0;32m    ✓ $*\033[0m"; }
 die()  { echo -e "\033[0;31m    ✗ $*\033[0m" >&2; exit 1; }
 
 need_root() {
-  [ "$(id -u)" -eq 0 ] && die "这个脚本不要用 root 跑，用普通用户跑，内部按需 sudo"
+  if [ "$(id -u)" -eq 0 ]; then
+    die "这个脚本不要用 root 跑，用普通用户跑，内部按需 sudo"
+  fi
 }
 
 preflight() {
