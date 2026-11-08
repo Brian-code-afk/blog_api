@@ -13,7 +13,8 @@ services:
   web:
     # ⚠️ 关键：只监听 127.0.0.1，公网访问必须走 Nginx
     #    写成 "8000:8000" 会让 FastAPI 直接暴露公网（没有 HTTPS、没有限流）
-    ports:
+    #    !override 表示整个替换基座的 ports 列表（默认行为是追加合并，会导致两条映射打架）
+    ports: !override
       - "127.0.0.1:8000:8000"
     environment:
       ENV: prod
@@ -45,9 +46,9 @@ services:
         max-file: "3"
 
   db:
-    # 不映射到宿主机，只在 compose 内部网络可访问
+    # !reset 清空基座的 3306:3306 映射（普通 [] 追加合并清不掉，会泄漏公网）
     # 需要从本机连 Navicat 时，临时改成 "127.0.0.1:3307:3306" 再用 SSH 隧道
-    ports: []
+    ports: !reset []
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
@@ -66,7 +67,7 @@ services:
         max-file: "3"
 
   redis:
-    ports: []
+    ports: !reset []
     # 256MB 上限 + LRU 淘汰，防止把服务器内存吃满
     command: >
       redis-server
