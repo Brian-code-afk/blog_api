@@ -51,8 +51,10 @@ COPY --from=builder /opt/venv /opt/venv
 COPY . .
 
 # 非 root 运行：容器被攻破时降低破坏范围
+# chmod 保证 entrypoint 有执行位（git 提交时可能丢了 +x）
 RUN useradd -m -u 10001 appuser \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/docker-entrypoint.sh
 USER appuser
 
 EXPOSE 8000
